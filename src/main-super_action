@@ -1,0 +1,522 @@
+#include <Adafruit_PWMServoDriver.h>
+
+// define PCA9685 driver
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
+
+// define leg struct
+struct Leg {
+  int hip;   // hip servo channel
+  int upper; // upper leg servo channel
+  int lower; // lower leg servo channel
+  float x;   // x position
+  float y;   // y position
+  float z;   // z position
+  int q1;    // hip angle
+  int q2;    // upper leg angle
+  int q3;    // lower leg angle
+};
+
+// define leg lengths and angles
+const float L = 10;     // body length
+const float L1 = 5.5;   // hip offset
+const float L2 = 10;    // upper leg length
+const float L3 = 10;    // lower leg length
+const float A = 30;     // body angle
+const float H = 5;      // height of trotting motion
+const float T = 1000;   // period of trotting motion
+
+// compute inverse kinematics for leg
+Leg IK(Leg leg) {
+  // compute hip angle
+  float q1 = atan2(leg.y, leg.x) * 180 / M_PI;
+  // compute leg projection onto x-y plane
+  float d = sqrt(leg.x * leg.x + leg.y * leg.y) - L1;
+  // compute distance from hip to foot
+  float r = sqrt(d * d + leg.z * leg.z);
+  // compute knee angle using law of cosines
+  float q3 = acos((L2 * L2 + L3 * L3 - r * r) / (2 * L2 * L3)) * 180 / M_PI;
+  // compute foot angle using law of sines
+  float q2 = asin((L3 / r) * sin(q3 * M_PI / 180)) * 180 / M_PI + atan2(leg.z, d) * 180 / M_PI;
+  // store joint angles in leg struct
+  leg.q1 = q1 + A;
+  leg.q2 = q2;
+  leg.q3 = q3 - 90;
+  return leg;
+}
+
+// set leg positions for standing position
+void stand(Leg legs[]) {
+  for (int i = 0; i < 4; i++) {
+    Leg leg = legs[i];
+    leg.x = -L / 2 + i * L / 2;
+    leg.y = 0;
+    leg.z = L1 + L2 + L3;
+    leg = IK(leg);
+    legs[i] = leg;
+    pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600));   // hip servo
+    pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+    pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+  }
+}
+
+// set leg positions for walking forward
+void walkForward(Leg legs[], int t) {
+  for (int i = 0; i < 4; i++) {
+    Leg leg = legs[i];
+    leg.x = -L / 2 + i * L / 2 -
+    L / 2 * sin(2 * M_PI * t / T);
+leg.y = 0;
+leg.z = L1 + L2 + L3 - H * cos(2 * M_PI * t / T);
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600));   // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+// set leg positions for walking backward
+void walkBackward(Leg legs[], int t) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.x = L / 2 - i * L / 2 + L / 2 * sin(2 * M_PI * t / T);
+leg.y = 0;
+leg.z = L1 + L2 + L3 - H * cos(2 * M_PI * t / T);
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+// set leg positions for turning left
+void turnLeft(Leg legs[], int t) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.x = -L / 2 + i * L / 2 - L / 2 * sin(2 * M_PI * t / T);
+leg.y = 0;
+leg.z = L1 + L2 + L3;
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+// set leg positions for turning right
+void turnRight(Leg legs[], int t) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.x = -L / 2 + i * L / 2 + L / 2 * sin(2 * M_PI * t / T);
+leg.y = 0;
+leg.z = L1 + L2 + L3;
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+// set leg positions for trotting
+void trot(Leg legs[], int t) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+if (i % 2 == 0) {
+leg.x = -L / 2 + i * L / 2 + L / 2 * sin(2 * M_PI * t / T);
+leg.z = L1 + L2 + L3 - H * cos(2 * M_PI * t / T);
+} else {
+leg.x = -L / 2 + i * L / 2 - L / 2 * sin(2 * M_PI * t / T);
+leg.z = L1 + L2 + L3 + H * cos(2 * M_PI * t / T);
+}
+leg.y = 0;
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+// set leg positions for jumping
+void jump(Leg legs[], int t) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.x = -L / 2 + i * L / 2;
+leg.y = -1 * abs(5 * sin(2 * M_PI * t / T));
+leg.z = L1 + L2 + L3;
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+// set leg positions for standing
+void setDown(Leg legs[]) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.x = -L / 2 + i * L / 2;
+leg.y = 0;
+leg.z = L1 + L2 + L3;
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150,600));
+}
+
+// set leg positions for moving forward
+void forward(Leg legs[], int t) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.x += 0.05 * cos(leg.q1 * M_PI / 180);
+leg.z += 0.05 * sin(leg.q1 * M_PI / 180);
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+// set leg positions for moving backward
+void backward(Leg legs[], int t) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.x -= 0.05 * cos(leg.q1 * M_PI / 180);
+leg.z -= 0.05 * sin(leg.q1 * M_PI / 180);
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+// set leg positions for moving left
+void left(Leg legs[], int t) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.x += 0.05 * cos((leg.q1 - 90) * M_PI / 180);
+leg.z += 0.05 * sin((leg.q1 - 90) * M_PI / 180);
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+// set leg positions for moving right
+void right(Leg legs[], int t) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.x += 0.05 * cos((leg.q1 + 90) * M_PI / 180);
+leg.z += 0.05 * sin((leg.q1 + 90) * M_PI / 180);
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+// set leg positions for trotting
+void trot(Leg legs[], int t) {
+float angle = 10.0 * sin(4 * M_PI * t / 1000.0);
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+if (i == 0 || i == 3) {
+leg.q1 += angle;
+leg.q2 += angle;
+} else {
+leg.q1 -= angle;
+leg.q2 -= angle;
+}
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+// set leg positions for jumping
+void jump(Leg legs[], int t) {
+float height = 0.02 * pow((t - 500), 2);
+if (height > 5.0) {
+height = 5.0;
+}
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.y = 5.0 - height;
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+// set leg positions for setting down
+void setdown(Leg legs[], int t) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.y = 0;
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+void loop() {
+// read user input
+char input = Serial.read();
+
+switch (input) {
+case 'f':
+forward(legs, t);
+Serial.println("Moving forward");
+break;
+case 'b':
+backward(legs, t);
+Serial.println("Moving backward");
+break;
+case 'l':
+left(legs, t);
+Serial.println("Moving leftcase 'r':
+  right(legs, t);
+  Serial.println("Moving right");
+  break;
+case 's':
+  stop(legs);
+  Serial.println("Stopped");
+  break;
+case 'j':
+  jump(legs, t);
+  Serial.println("Jumping");
+  break;
+case 't':
+  trot(legs, t);
+  Serial.println("Trotting");
+  break;
+case 'd':
+  setdown(legs, t);
+  Serial.println("Setting down");
+  break;
+default:
+  Serial.println("Invalid input");
+  break;
+}
+
+// increment time
+t += 10;
+if (t > 1000) {
+t = 0;
+}
+
+// wait for a moment
+delay(10);
+}// inverse kinematics
+Leg IK(Leg leg) {
+float L1 = LEG_UPPER_LENGTH;
+float L2 = LEG_LOWER_LENGTH;
+float a = leg.x;
+float b = leg.y;
+float c = leg.z;
+
+// calculate q1
+float q1 = atan2(b, a) * 180 / M_PI;
+if (q1 < 0) {
+q1 += 360;
+}
+leg.q1 = q1;
+
+// calculate q3
+float q3 = acos((a * a + b * b + c * c - L1 * L1 - L2 * L2) / (2 * L1 * L2)) * 180 / M_PI - 90;
+leg.q3 = q3;
+
+// calculate q2
+float k1 = L1 + L2 * cos(q3 * M_PI / 180);
+float k2 = L2 * sin(q3 * M_PI / 180);
+float q2 = atan2(c * k1 - b * k2, b * k1 + c * k2) * 180 / M_PI;
+if (q2 < 0) {
+q2 += 360;
+}
+leg.q2 = q2;
+
+return leg;
+}// stop all legs
+void stop(Leg legs[]) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.q1 = 90;
+leg.q2 = 90;
+leg.q3 = 90;
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+// move all legs forward
+void forward(Leg legs[], int t) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.z -= 0.2;
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+// move all legs backward
+void backward(Leg legs[], int t) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.z += 0.2;
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+// move all legs left
+void left(Leg legs[], int t) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.x += 0.2;
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+// move all legs right
+void right(Leg legs[], int t) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.x -= 0.2;
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180,150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+// make the robodog trot
+void trot(Leg legs[], int t) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+if (i % 2 == 0) {
+leg.z -= 0.2;
+} else {
+leg.z += 0.2;
+}
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+// make the robodog jump
+void jump(Leg legs[], int t) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.z -= 1.0;
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+delay(1000);
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.z += 1.0;
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+// set down the robodog
+void setdown(Leg legs[], int t) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.y += 5.0;
+leg.z += 10.0;
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 180, 150, 600)); // lower leg servo
+}
+delay(2000);
+}
+
+// stop the robodog
+void stop(Leg legs[]) {
+for (int i = 0; i < 4; i++) {
+Leg leg = legs[i];
+leg.z = 0;
+leg = IK(leg);
+legs[i] = leg;
+pwm.setPWM(leg.hip, 0, map(leg.q1, 0, 180, 150, 600)); // hip servo
+pwm.setPWM(leg.upper, 0, map(leg.q2, 0, 180, 150, 600)); // upper leg servo
+pwm.setPWM(leg.lower, 0, map(leg.q3, 0, 180, 150, 600)); // lower leg servo
+}
+}
+
+void loop() {
+if (Serial.available() > 0) {
+char command = Serial.read();
+switch (command) {
+case 'f':
+forward(legs, millis());
+break;
+case 'b':
+backward(legs, millis());
+break;
+case 'l':
+left(legs, millis());
+break;
+case 'r':
+right(legs, millis());
+break;
+case 'j':
+jump(legs, millis());
+break;
+case 't':
+trot(legs, millis());
+break;
+case 's':
+stop(legs);
+break;
+case 'd':
+setdown(legs, millis());
+break;
+default:
+Serial.println("Invalid command");
+break;
+}
+}
+}
